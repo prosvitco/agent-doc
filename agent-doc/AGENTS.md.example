@@ -1,0 +1,56 @@
+# AGENTS.md
+
+<!--
+This file is the SINGLE instruction file for AI agents working in this
+repository. Every provider-specific file is a symlink to it, never a copy —
+a copy drifts, a symlink cannot:
+
+    ln -s AGENTS.md CLAUDE.md                                  # Claude Code
+    ln -s AGENTS.md GEMINI.md                                  # Gemini CLI
+    mkdir -p .github && ln -s ../AGENTS.md .github/copilot-instructions.md
+
+Replace this comment and the "Project instructions" section with your
+project's own guidance; keep the "Documentation" section as is.
+-->
+
+## Documentation — `agent-doc/`
+
+All project documentation lives in `agent-doc/` as one normalised, validated
+model — not scattered markdown files. Work with it **only** through the
+`docs:*` commands; never hand-edit anything under `agent-doc/docs/`.
+
+Every command runs from the repository root via `--prefix`:
+
+```bash
+npm --prefix agent-doc run docs:show                 # the index: everything, priority-ordered
+npm --prefix agent-doc run docs:show -- --id 1       # one document, fully assembled
+npm --prefix agent-doc run docs:new -- task "…" --area <area>   # file new work
+npm --prefix agent-doc run docs:check                # validate; must pass
+```
+
+The commands, in the order you meet them:
+
+| | |
+|---|---|
+| `docs:show` | read — one document assembled in full, or a filtered list (`--type`, `--area`, `--status`, `--on`, `--summary`) |
+| `docs:new` | file a document; the ID is assigned, never typed — `--on <ID>` links it immediately |
+| `docs:set` | change fields on an existing document |
+| `docs:link` | relate two documents — one pivot, both directions |
+| `docs:rm` | remove a document and everything that hangs off it |
+| `docs:check` | validate the whole model; exit 1 on any problem |
+| `docs:query` | SQL against a derived index, rebuilt on every run |
+
+Ground rules:
+
+- **Document 1 is the skill** that explains the whole model — read it
+  (`docs:show -- --id 1`) before filing anything for the first time.
+- **Before starting a task**, check `docs:show` for rules, tasks and notes
+  linked to the area you are about to touch.
+- **IDs are assigned by `docs:new`, never typed or guessed.**
+- **After filing or changing documentation**, run `docs:check` — it must pass.
+- `agent-doc/INSTALL.md` is human setup documentation — you do not need it.
+
+## Project instructions
+
+<!-- Your project's own guidance goes here: build and test commands,
+     conventions, boundaries. -->

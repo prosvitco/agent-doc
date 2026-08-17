@@ -1,0 +1,16 @@
+{
+  "name": "agent-doc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs:show": "node scripts/docs-show.mjs",
+    "docs:new": "node scripts/docs-new.mjs",
+    "docs:set": "node scripts/docs-set.mjs",
+    "docs:link": "node scripts/docs-link.mjs",
+    "docs:check": "node scripts/docs-check.mjs",
+    "docs:db": "node scripts/docs-db.mjs",
+    "docs:query": "node scripts/docs-query.mjs",
+    "docs:rm": "node scripts/docs-rm.mjs",
+    "docs:seed": "node scripts/docs-seed.mjs"
+  }
+}

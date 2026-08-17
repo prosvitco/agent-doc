@@ -1,0 +1,14 @@
+{
+  "id": "1",
+  "type": "skill",
+  "title": "Read and file documentation",
+  "status": "current",
+  "at": "2026-08-17",
+  "entries": [
+    {
+      "type": "prose",
+      "note": "How this model works",
+      "file": "reports/skill/1/index.md"
+    }
+  ]
+}
