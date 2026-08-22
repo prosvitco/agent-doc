@@ -101,9 +101,6 @@ export const docTypes = {
   },
 };
 
-/** One global sequence, plain integers — `1`, `2`, `3`. No padding to know. */
-export const ID_PAD = 1;
-
 /**
  * Does this type carry its own content entries?
  *

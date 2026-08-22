@@ -5,9 +5,10 @@
 //
 // THE MODEL
 //
-//   docs/data/<type>/<ID>.json    one file per resource; SMALL — structure only
+//   docs/data/docs/<ID>.json      one file per resource; SMALL — structure only
 //   docs/data/links.jsonl         the ONE pivot: {from, rel, to}
-//   docs/reports/<type>/<n>/…     the large content: prose, images, code, data
+//   docs/data/ids.jsonl           every id ever minted — see `docs-id`
+//   docs/reports/<type>/<ID>/…    the large content: prose, images, code, data
 //
 // Three decisions worth restating, because each was a fork:
 //
@@ -23,8 +24,7 @@
 //   painful to write, which is exactly the part with the most value.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import {
   areas,
@@ -39,9 +39,10 @@ import {
   sourceSystems,
 } from "../docs/taxonomy.mjs";
 
-export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-export const DOCS = join(ROOT, "docs");
-const DATA = join(DOCS, "data");
+import { DATA, DOCS, ID_RE, ROOT, ledger, legacyMap } from "./docs-id.mjs";
+
+export { DOCS, ROOT };
+export * from "./docs-id.mjs";
 
 // `summary` is deliberately NOT here. A one-line overview is a compression of
 // the prose, so it lives IN the prose file as a blockquote under the heading
@@ -62,7 +63,11 @@ export function load() {
   // type is data in the taxonomy rather than another code path here.
   const dir = join(DATA, "docs");
   if (existsSync(dir)) {
-    for (const file of readdirSync(dir).filter((f) => /^\d+\.json$/.test(f)).sort()) {
+    // EVERY `.json` here is a document. The filter used to be `/^\d+\.json$/`,
+    // which silently ignored anything else — so a file left behind by a partial
+    // migration was invisible rather than reported. Shape is checked below, as a
+    // problem with a name, instead of being used to decide what to read.
+    for (const file of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
       let r;
       try {
         r = JSON.parse(readFileSync(join(dir, file), "utf8"));
@@ -74,11 +79,26 @@ export function load() {
       const spec = docTypes[r.type];
 
       if (r.id !== id) fail(`${file}: id '${r.id}' does not match the filename`);
+      if (!ID_RE.test(id)) fail(`${file}: '${id}' is not a valid id — expected <type>-<suffix>, e.g. task-k3f9x2`);
+      // The type appears in the id AND in the field. That is the model's only
+      // duplicated fact, and it is duplicated on purpose: checking the two agree
+      // is what turns a redundancy into a guard. A note refiled as a task keeps
+      // its old prefix, and this is where that is caught.
+      else if (r.type && !id.startsWith(`${r.type}-`)) {
+        fail(`${file}: id says '${id.split("-")[0]}' but type is '${r.type}'`);
+      }
       if (!spec) {
         fail(`${file}: type '${r.type}' not one of ${Object.keys(docTypes).join(", ")}`);
         continue;
       }
       if (!r.title) fail(`${file}: no title`);
+      // Every document, not just notes and reports. With a counter for an id,
+      // creation ORDER was free — `1` came before `2`, and the index sorted on
+      // it. Ids carry no order any more, so the date has to be a real field or
+      // "what did I file last week" stops being answerable. `docs:migrate`
+      // backfills it from `git log --diff-filter=A`, so nothing is invented.
+      if (!r.at) fail(`${file}: no 'at' — every document records the day it was filed`);
+      else if (!/^\d{4}-\d{2}-\d{2}$/.test(r.at)) fail(`${file}: at '${r.at}' is not YYYY-MM-DD`);
       if (!(r.status in spec.status)) {
         fail(`${file}: status '${r.status}' not valid for a ${r.type} — ${Object.keys(spec.status).join(", ")}`);
       }
@@ -221,7 +241,37 @@ export function load() {
     }
   }
 
-  return { byId, links, tags, problems };
+  // ---- the id ledger -----------------------------------------------------
+  //
+  // THIS IS WHERE A CROSS-BRANCH COLLISION SURFACES.
+  //
+  // `ids.jsonl` is append-only, so two branches that mint the same id append the
+  // same line twice and the merge keeps both — a duplicate that no other file
+  // can show, because the document files would have conflicted and been resolved
+  // by hand long before anyone looked at the links. Entropy makes this rare; the
+  // point of checking is that when it happens it is a named failure rather than
+  // a document quietly wearing another document's history.
+  const rows = ledger();
+  const seenIds = new Set();
+  for (const row of rows) {
+    if (seenIds.has(row.id)) {
+      fail(`ids.jsonl: '${row.id}' was minted twice — two branches collided; re-file one of them`);
+    }
+    seenIds.add(row.id);
+  }
+  // The ledger is what makes "ids are never reused" true, so a document missing
+  // from it is a document whose id could be handed out again.
+  for (const r of byId.values()) {
+    if (!seenIds.has(r.id)) fail(`${r.file}: not recorded in ids.jsonl — its id could be minted again`);
+  }
+
+  const legacy = legacyMap();
+  for (const [old_, now] of legacy) {
+    if (!byId.has(now)) fail(`legacy-ids.jsonl: ${old_} maps to '${now}', which does not exist`);
+    if (byId.has(old_)) fail(`legacy-ids.jsonl: '${old_}' is also a live id — the map would shadow it`);
+  }
+
+  return { byId, links, tags, problems, legacy };
 }
 
 // ---------------------------------------------------------------------------

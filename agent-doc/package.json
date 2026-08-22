@@ -11,6 +11,7 @@
     "docs:db": "node scripts/docs-db.mjs",
     "docs:query": "node scripts/docs-query.mjs",
     "docs:rm": "node scripts/docs-rm.mjs",
+    "docs:migrate": "node scripts/docs-migrate.mjs",
     "docs:seed": "node scripts/docs-seed.mjs"
   }
 }

@@ -4,25 +4,27 @@
 //
 //   npm run docs:new -- task "Add the import pipeline" --area core
 //   npm run docs:new -- rule "Every write goes through the queue" --area core --status proposed
-//   npm run docs:new -- note "measured the baseline" --area core --type measurement --on TASK-001
-//   npm run docs:new -- report "Baseline measurement" --area core --on TASK-001 --prose
+//   npm run docs:new -- note "measured the baseline" --area core --kind measurement --on task-k3f9x2
+//   npm run docs:new -- report "Baseline measurement" --area core --on task-k3f9x2 --prose
 //
-// Why a command and not a convention: "read the real maximum before filing" is
-// a rule people and agents both break. A prose index of the highest ID in use
-// goes stale silently — several conflicting claims at once — and then a document
-// gets filed at a number already taken. A tool that scans the directory cannot
-// be wrong about it; a human reading a number quoted in prose can.
+// Why a command and not a convention: an id has to be unique, and "check what is
+// already taken before filing" is a rule people and agents both break. A prose
+// index of ids in use goes stale silently — several conflicting claims at once —
+// and then a document gets filed at an id already held.
+//
+// The id is `<type>-<six characters of entropy>`, minted against the ledger of
+// every id ever used and claimed with an exclusive create, so two agents filing
+// at the same moment cannot both win. `docs-id.mjs` carries that argument in
+// full, including why a counter could not survive two branches.
 //
 // `--on <ID>` writes the link row too, so a note or report is never orphaned —
 // the second half of filing that is easy to forget.
 
-import { existsSync, mkdirSync, readdirSync, writeFileSync, appendFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { areas, carriesEntries, docTypes, noteTypes, priorities } from "../docs/taxonomy.mjs";
-import { DOCS, SUMMARY_PLACEHOLDER, load } from "./docs-lib.mjs";
-
-const DATA = join(DOCS, "data");
+import { DATA, DOCS, SUMMARY_PLACEHOLDER, claimId, load, recordId, resolveOrExit, today } from "./docs-lib.mjs";
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -41,24 +43,13 @@ if (!spec || !title || title.startsWith("--")) {
   --status <s>     defaults to the first status for the type
   --priority <p>   free text
   --on <ID>        link this to an existing resource (notes annotate, reports document)
+                   any unambiguous id prefix works — \`k3f\` for \`task-k3f9x2\`
   --kind <k>       notes only: ${Object.keys(noteTypes).join(" | ")}
   --parent <ID>    file this as a child of an existing document
   --source <sys>   asana | github | linear | figma  (default local)
   --url <url>      the external url, with --source
   --prose          also create a prose file under reports/ and reference it`);
   process.exit(1);
-}
-
-/** The next free number, read from the directory — never from a quoted claim. */
-function nextId() {
-  const dir = join(DATA, "docs");
-  mkdirSync(dir, { recursive: true });
-  const used = readdirSync(dir)
-    .map((f) => /^(\d+)\.json$/.exec(f))
-    .filter(Boolean)
-    .map((m) => Number(m[1]));
-  const n = (used.length ? Math.max(...used) : 0) + 1;
-  return { id: String(n), n };
 }
 
 const area = arg("area");
@@ -72,10 +63,26 @@ if (!(status in spec.status)) {
   process.exit(1);
 }
 
-const { id, n } = nextId();
-const num = String(n);
+// Load once, up front: `--parent` and `--on` name documents that must already
+// exist, and both are resolved before anything is written. Resolving after the
+// claim would mean a typo leaves a filed document behind to clean up.
+const { byId } = load();
 
-const body = { id, type: kind, title, status };
+const parentArg = arg("parent");
+// No digit-stripping. The old line was `String(parent).replace(/\D/g, "")`,
+// which turned any non-numeric id into nonsense — it was already wrong for the
+// `TASK-001` form this file's own usage text advertised.
+const parentId = parentArg && parentArg !== true ? resolveOrExit(parentArg, byId) : undefined;
+
+const onArg = arg("on");
+const onId = onArg && onArg !== true ? resolveOrExit(onArg, byId) : undefined;
+
+// Claim the id by creating the file exclusively — nothing else can hold it from
+// here on, so the prose directory named after it is safe to create.
+const { id, path } = claimId(kind);
+const at = today();
+
+const body = { id, type: kind, title, status, at };
 const prio = arg("priority");
 if (prio && prio !== true) {
   if (!(prio in priorities)) {
@@ -93,19 +100,19 @@ if (kind === "note") {
     process.exit(1);
   }
   body.kind = t;
-  body.at = new Date().toISOString().slice(0, 10);
 }
-if (carriesEntries(kind)) {
-  body.at = new Date().toISOString().slice(0, 10);
-  body.entries = [];
-}
+if (carriesEntries(kind)) body.entries = [];
 
-const parent = arg("parent");
-if (parent && parent !== true) body.parent_id = String(parent).replace(/\D/g, "");
+if (parentId) body.parent_id = parentId;
 
 const created = [];
 
-// Prose goes under reports/<type-dir>/<number>/, never inline in the JSON.
+// Prose goes under reports/<type>/<ID>/, never inline in the JSON.
+//
+// The directory is named for the id now, not a number. Under the counter the
+// name and the owning document could already disagree — the directory took the
+// SUBJECT's number while the report holding it was filed at `n + 1` — and
+// `docs:rm` had to carry a comment explaining that. One id, one directory.
 //
 // For anything that is not itself a report, `--prose` also mints the REPORT that
 // holds it and links it back. Otherwise the file is an orphan: written, but
@@ -113,8 +120,8 @@ const created = [];
 // happened the first time this command was used.
 let proseReport = null;
 if (arg("prose") === true) {
-  const rel = join("reports", kind, num, "index.md");
-  mkdirSync(join(DOCS, "reports", kind, num), { recursive: true });
+  const rel = join("reports", kind, id, "index.md");
+  mkdirSync(join(DOCS, "reports", kind, id), { recursive: true });
   // The stub carries the summary blockquote, because a convention that lives
   // only in the skill is one an author has to remember; one that is already in
   // the file is one they only have to fill in.
@@ -124,14 +131,17 @@ if (arg("prose") === true) {
   if (carriesEntries(kind)) {
     body.entries.push({ type: "prose", note: title, file: rel });
   } else {
-    const rid = String(n + 1);
-    writeFileSync(join(DATA, "docs", `${rid}.json`), `${JSON.stringify({
-      id: rid, type: "report", title, status: "draft",
-      at: new Date().toISOString().slice(0, 10),
+    // Claimed the same way, never guessed. The old line was `String(n + 1)` —
+    // an assumption that the next number was free, which held only because
+    // nothing else ran in between.
+    const { id: rid, path: rpath } = claimId("report");
+    writeFileSync(rpath, `${JSON.stringify({
+      id: rid, type: "report", title, status: "draft", at,
       entries: [{ type: "prose", note: title, file: rel }],
     }, null, 2)}\n`);
+    recordId(rid, at);
     proseReport = rid;
-    created.push(`docs/data/docs/${rid}.json`);
+    created.push(`docs/data/docs/${rid}.json`, `docs/data/ids.jsonl  (+ ${rid})`);
   }
 }
 
@@ -146,21 +156,18 @@ if (proseReport) {
   appendFileSync(join(DATA, "tags.jsonl"), `${JSON.stringify({ doc: proseReport, axis: "area", value: area })}\n`);
 }
 
-const path = join(DATA, "docs", `${id}.json`);
+// The file already exists — `claimId` created it empty to hold the id. This
+// fills it in.
 writeFileSync(path, `${JSON.stringify(body, null, 2)}\n`);
+recordId(id, at);
 created.push(`docs/data/docs/${id}.json`);
+created.push(`docs/data/ids.jsonl  (+ ${id})`);
 
 // the link, so nothing is filed orphaned
-const on = arg("on");
-if (on && on !== true) {
-  const { byId } = load();
-  if (!byId.has(on)) {
-    console.error(`--on ${on} does not exist; the resource was written but not linked`);
-  } else {
-    const rel = kind === "note" ? "annotates" : kind === "report" ? "documents" : "relates_to";
-    appendFileSync(join(DATA, "links.jsonl"), `${JSON.stringify({ from: id, rel, to: on })}\n`);
-    created.push(`docs/data/links.jsonl  (+ ${id} ${rel} ${on})`);
-  }
+if (onId) {
+  const rel = kind === "note" ? "annotates" : kind === "report" ? "documents" : "relates_to";
+  appendFileSync(join(DATA, "links.jsonl"), `${JSON.stringify({ from: id, rel, to: onId })}\n`);
+  created.push(`docs/data/links.jsonl  (+ ${id} ${rel} ${onId})`);
 }
 
 console.log(`${kind}/${id} — ${title}\n`);

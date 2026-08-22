@@ -2,16 +2,20 @@
 //
 // Reads the model: one resource assembled in full, or a filtered list.
 //
-//   npm run docs:show -- --id 2                    one document, assembled
-//   npm run docs:show 2                            positional shortcut
+//   npm run docs:show -- --id task-k3f9x2          one document, assembled
+//   npm run docs:show k3f                          positional shortcut, prefix
 //   npm run docs:show -- --type task               every task
 //   npm run docs:show -- --type task --status open filtered
 //   npm run docs:show -- --area core               across all types
 //   npm run docs:show -- --on 2                    everything linked to it
 //   npm run docs:show -- --type task --summary     with each document's summary
 //
-// IDs are ONE global sequence with `type` as a field, so `2`, `002` and `0002`
-// all resolve. The type is not in the id because it is already a column.
+// IDs are `<type>-<six characters>` and carry NO order — see `docs-id.mjs` for
+// why a counter could not survive two branches. Any unambiguous prefix resolves,
+// git-short-sha style, so `k3f` is usually enough to type; an ambiguous one
+// names its candidates rather than picking. The list is ordered by `at`, the
+// day each document was filed, which is now a field on every document because
+// the id stopped being able to imply it.
 //
 // THIS IS THE AGENT ENTRY POINT. A normalised model is right for writing and
 // wrong for reading: nobody should need the schema, five file reads and a join
@@ -24,7 +28,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { areas, carriesEntries, docTypes, linkRels, noteTypes, priorities } from "../docs/taxonomy.mjs";
-import { DOCS, load, proseFileOf, relationsOf, summaryOf } from "./docs-lib.mjs";
+import { DOCS, load, proseFileOf, relationsOf, resolveId, summaryOf } from "./docs-lib.mjs";
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -48,22 +52,14 @@ if (type && !(type in docTypes)) {
   process.exit(1);
 }
 
-const { byId, links, problems } = load();
+const { byId, links, problems, legacy } = load();
 if (problems.length) {
   console.error(`docs — ${problems.length} problem(s); run \`npm run docs:check\`\n`);
   for (const p of problems.slice(0, 5)) console.error(`  ${p}`);
   process.exit(1);
 }
 
-/** `001` + `--type task` resolves to TASK-001; a full id resolves as itself. */
-function resolveId(raw) {
-  if (!raw || raw === true) return undefined;
-  if (byId.has(raw)) return raw;
-  // ids are one global zero-padded sequence, so `7`, `007` and `0007` all mean
-  // the same document — an agent should not have to know the padding
-  const n = String(raw).replace(/\D/g, "");
-  return byId.has(n) ? n : undefined;
-}
+
 
 // ---------------------------------------------------------------------------
 // One resource, assembled
@@ -196,7 +192,9 @@ function wrapped(text, width, maxLines = 2) {
 
 function table(rows) {
   if (!rows.length) return "(no matches)";
-  const cols = ["id", "type", "status", "priority", "areas", "title"];
+  // `at` is a column now, not just a sort key: the list is ordered by it, and an
+  // order the reader cannot see reads as no order at all.
+  const cols = ["id", "at", "type", "status", "priority", "areas", "title"];
   const val = (r, c) => (c === "areas" ? r.areas.join(",") : r[c]);
   const w = cols.map((c) => Math.max(c.length, ...rows.map((r) => String(val(r, c) ?? "").length)));
   const line = (cells) => cells.map((c, i) => String(c ?? "").padEnd(w[i])).join("  ");
@@ -228,10 +226,17 @@ function table(rows) {
   return [line(cols), w.map((n) => "-".repeat(n)).join("  "), ...body].join("\n");
 }
 
-const single = resolveId(idArg);
-if (single) {
-  console.log(showOne(byId.get(single)));
+const hit = resolveId(idArg, byId, legacy);
+if (hit.id) {
+  // Printed to stderr so piping the document somewhere still yields the document.
+  if (hit.moved) console.error(`note: ${hit.moved} is now ${hit.id} (docs/data/legacy-ids.jsonl)`);
+  console.log(showOne(byId.get(hit.id)));
   process.exit(0);
+}
+if (hit.ambiguous) {
+  console.error(`'${idArg}' is ambiguous — ${hit.ambiguous.length} documents start with it:\n`);
+  for (const id of hit.ambiguous) console.error(`  ${id}  ${byId.get(id).type}/${byId.get(id).title}`);
+  process.exit(1);
 }
 if (idArg && idArg !== true) {
   console.error(`no such resource: ${idArg}${type ? ` (type ${type})` : ""}`);
@@ -255,9 +260,15 @@ if (on && on !== true) {
   linked.delete(on);
   rows = rows.filter((r) => linked.has(r.id));
 }
-// priority first (by rank, unset last), then id numerically
+// Priority first (by rank, unset last), then OLDEST FIRST by `at`.
+//
+// This used to be `Number(a.id) - Number(b.id)` — the counter doing real work,
+// standing in for filing order. Random ids cannot, so the date it stood in for
+// is now a field every document carries and this reads it directly. Same order
+// as before for anything filed under the old scheme, since `docs:migrate`
+// recovers `at` from the commit that added the file.
 const rank = (r) => priorities[r.priority]?.rank ?? 99;
-rows.sort((a, b) => rank(a) - rank(b) || Number(a.id) - Number(b.id));
+rows.sort((a, b) => rank(a) - rank(b) || String(a.at).localeCompare(String(b.at)) || a.id.localeCompare(b.id));
 
 console.log(table(rows));
 // The footer advertises `--summary`, because a flag nobody knows about is a

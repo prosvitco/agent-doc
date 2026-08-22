@@ -23,7 +23,7 @@ Every command runs from the repository root via `--prefix`:
 
 ```bash
 npm --prefix agent-doc run docs:show                 # the index: everything, priority-ordered
-npm --prefix agent-doc run docs:show -- --id 1       # one document, fully assembled
+npm --prefix agent-doc run docs:show -- --id k3f     # one document (any unambiguous prefix)
 npm --prefix agent-doc run docs:new -- task "…" --area <area>   # file new work
 npm --prefix agent-doc run docs:check                # validate; must pass
 ```
@@ -33,20 +33,23 @@ The commands, in the order you meet them:
 | | |
 |---|---|
 | `docs:show` | read — one document assembled in full, or a filtered list (`--type`, `--area`, `--status`, `--on`, `--summary`) |
-| `docs:new` | file a document; the ID is assigned, never typed — `--on <ID>` links it immediately |
+| `docs:new` | file a document; the ID is minted, never typed — `--on <ID>` links it immediately |
 | `docs:set` | change fields on an existing document |
 | `docs:link` | relate two documents — one pivot, both directions |
 | `docs:rm` | remove a document and everything that hangs off it |
 | `docs:check` | validate the whole model; exit 1 on any problem |
 | `docs:query` | SQL against a derived index, rebuilt on every run |
+| `docs:migrate` | one-time: move a pre-existing database onto `<type>-<suffix>` ids |
 
 Ground rules:
 
-- **Document 1 is the skill** that explains the whole model — read it
-  (`docs:show -- --id 1`) before filing anything for the first time.
+- **`skill-docs-model` is the skill** that explains the whole model — read it
+  (`docs:show -- --id skill-docs-model`) before filing anything for the first
+  time.
 - **Before starting a task**, check `docs:show` for rules, tasks and notes
   linked to the area you are about to touch.
-- **IDs are assigned by `docs:new`, never typed or guessed.**
+- **IDs are minted by `docs:new`, never typed or guessed.** They look like
+  `task-k3f9x2`; any unambiguous prefix resolves, so `k3f` is usually enough.
 - **After filing or changing documentation**, run `docs:check` — it must pass.
 - `agent-doc/INSTALL.md` is human setup documentation — you do not need it.
 

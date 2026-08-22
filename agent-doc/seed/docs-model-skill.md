@@ -1,8 +1,8 @@
 # Read and file documentation
 
 > All documentation here is one normalised model, not a folder of markdown.
-> Eight commands cover reading, filing, updating, linking, removing and
-> validating it, and the ID is always assigned, never typed.
+> Nine commands cover reading, filing, updating, linking, removing and
+> validating it, and the ID is always minted, never typed.
 
 All documentation in this tree is **one normalised model**, not a folder of
 markdown. Eight commands cover everything; you never need the schema, you never
@@ -12,15 +12,17 @@ hand-assemble a document from the JSON, and you never hand-edit it either.
 
 ```bash
 npm run docs:show                     # everything, priority-ordered
-npm run docs:show -- --id 4           # one document, fully assembled
+npm run docs:show -- --id task-k3f9x2 # one document, fully assembled
+npm run docs:show -- --id k3f         # any unambiguous prefix resolves
 npm run docs:show -- --type rule      # one type
 npm run docs:show -- --area core    # one area, across all types
 npm run docs:show -- --status open --type task
-npm run docs:show -- --on 1           # everything linked to a document
+npm run docs:show -- --on task-k3f9x2 # everything linked to a document
 npm run docs:show -- --type rule --summary   # + what each one says
 ```
 
-The list is the **index** — id, type, status, priority, areas, title. Add
+The list is the **index** — id, filed date, type, status, priority, areas,
+title, ordered by priority and then oldest first. Add
 `--summary` and each row also carries what that document *says*, which is the
 form to reach for when triaging rather than looking something up.
 
@@ -33,23 +35,37 @@ this command is the reading side.
 
 ```bash
 npm run docs:new -- task "Short imperative title" --area core --priority high
-npm run docs:new -- note "What was measured" --area core --kind measurement --on 1
+npm run docs:new -- note "What was measured" --area core --kind measurement --on k3f
 npm run docs:new -- rule "The invariant, stated" --area core --prose
 ```
 
-**The ID is assigned, never typed.** It is read from the directory at file time.
-Filing at a number quoted in prose is how the system this replaced ended up with
-four different stale "highest ID" claims in one index, and a task filed on a
-number that was already taken.
+**The ID is minted, never typed.** It looks like `task-k3f9x2`: the type, then
+six characters of entropy. Filing at an id quoted in prose is how the system this
+replaced ended up with four different stale "highest ID" claims in one index, and
+a task filed on an id that was already taken.
+
+It is *not* a counter, and that is the point. A counter is read per branch, so
+two branches filing at once both pick the same next number — and the damage is
+not the file conflict, which git catches, but `links.jsonl` and `tags.jsonl`,
+which merge cleanly and silently re-attach one document's history to another.
+
+You rarely type a whole id: **any unambiguous prefix works**, so `k3f` is
+usually enough, and an ambiguous one lists its candidates rather than guessing.
 
 Useful flags: `--on <id>` writes the relationship row too, so nothing is filed
 orphaned; `--parent <id>` files a subtask; `--prose` creates the content file
 (and, for a type that cannot hold content itself, the report that holds it plus
 the link).
 
-**Clearing the whole model resets the sequence.** `docs:new` reads the maximum
-from the directory, so an empty directory starts again at 1. Removing *some*
-documents does not reuse their numbers; removing *all* of them does.
+**IDs are never reused, ever.** `docs/data/ids.jsonl` records every id ever
+minted and nothing prunes it — not `docs:rm`, not clearing the model — so an id
+in an old commit message, an old branch or a prose paragraph keeps meaning what
+it meant. It is also where a two-branch collision surfaces: both branches append
+the same line, the merge keeps both, and `docs:check` names it.
+
+**Every document records `at`, the day it was filed.** Ids carry no order, so
+the date is a real field rather than something the numbering implied, and it is
+what the index sorts on.
 
 ## Summarise it in the prose, in one sentence
 

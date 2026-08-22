@@ -2,9 +2,9 @@
 //
 // Removes documents, and everything that only existed to support them.
 //
-//   npm run docs:rm -- 9 11 12          delete, with a plan printed first
-//   npm run docs:rm -- 9 --dry-run      show the plan, change nothing
-//   npm run docs:rm -- 9 --force        delete even if something still links to it
+//   npm run docs:rm -- task-k3f9x2 note-8mq04p   delete, with a plan printed first
+//   npm run docs:rm -- k3f --dry-run             show the plan, change nothing
+//   npm run docs:rm -- k3f --force               delete even if something links to it
 //
 // WHY THIS IS A COMMAND
 //
@@ -28,15 +28,13 @@
 import { existsSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { DOCS, load } from "./docs-lib.mjs";
-
-const DATA = join(DOCS, "data");
+import { DATA, DOCS, load, resolveOrExit } from "./docs-lib.mjs";
 
 const dryRun = process.argv.includes("--dry-run");
 const force = process.argv.includes("--force");
-const ids = process.argv.slice(2).filter((a) => /^\d+$/.test(a));
+const targets = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 
-if (!ids.length) {
+if (!targets.length) {
   console.error(`usage: npm run docs:rm -- <id> [<id>…] [--dry-run] [--force]
 
 Deletes documents, their tags, their links in both directions, and their prose.
@@ -52,11 +50,7 @@ if (problems.length && !force) {
   process.exit(1);
 }
 
-const missing = ids.filter((id) => !byId.has(id));
-if (missing.length) {
-  console.error(`no such document: ${missing.join(", ")}`);
-  process.exit(1);
-}
+const ids = targets.map((t) => resolveOrExit(t, byId));
 
 // ---- expand: reports whose only subject is going away ----------------------
 const doomed = new Set(ids);
@@ -87,10 +81,12 @@ for (const r of byId.values()) {
 
 const cascaded = [...doomed].filter((id) => !ids.includes(id));
 console.log(`removing ${doomed.size} document(s):\n`);
-for (const id of [...doomed].sort((a, b) => Number(a) - Number(b))) {
+// Filing order, from the recorded date — ids carry no sequence any more.
+const width = Math.max(...[...doomed].map((id) => id.length));
+for (const id of [...doomed].sort((a, b) => String(byId.get(a).at).localeCompare(String(byId.get(b).at)))) {
   const r = byId.get(id);
   const why = ids.includes(id) ? "" : "  (cascade: nothing left to document)";
-  console.log(`  ${id.padEnd(3)} ${r.type.padEnd(8)} ${r.title}${why}`);
+  console.log(`  ${id.padEnd(width)}  ${r.at}  ${r.type.padEnd(8)} ${r.title}${why}`);
 }
 
 if (blockers.length && !force) {
@@ -137,7 +133,13 @@ const droppedTags = prune("tags.jsonl", (t) => !doomed.has(t.doc));
 
 for (const r of removed) console.log(`\n  removed ${r}`);
 console.log(`\n  ${droppedLinks} link row(s), ${droppedTags} tag row(s) pruned`);
-console.log(`\nIDs are NOT reused — the next document continues the sequence, so a
-number in an old commit message still means what it meant.
+// This claim used to be false. `nextId()` scanned the live directory for its
+// maximum, so deleting the highest-numbered document handed its number straight
+// back to the next one filed. Nothing is pruned from `docs/data/ids.jsonl` — not
+// here, not anywhere — and `mintId` asks the ledger rather than the directory,
+// which is what finally makes it true.
+console.log(`\nIDs are NOT reused: docs/data/ids.jsonl keeps every id ever minted, and this
+command does not prune it. An id in an old commit message, an old branch or a
+prose paragraph still means what it meant.
 
   npm run docs:check`);
