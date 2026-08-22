@@ -2,8 +2,8 @@
 //
 // Relates two documents that already exist — the pivot's own Create and Delete.
 //
-//   npm run docs:link -- 21 relates_to 28
-//   npm run docs:link -- 21 relates_to 28 --rm
+//   npm run docs:link -- task-k3f9x2 relates_to design-8mq04p
+//   npm run docs:link -- k3f relates_to 8mq --rm          (prefixes resolve)
 //
 // WHY THIS IS A COMMAND
 //
@@ -36,13 +36,12 @@ import { existsSync, readFileSync, writeFileSync, appendFileSync } from "node:fs
 import { join } from "node:path";
 
 import { linkRels, singularRels } from "../docs/taxonomy.mjs";
-import { DOCS, load } from "./docs-lib.mjs";
+import { DATA, load, resolveOrExit } from "./docs-lib.mjs";
 
-const DATA = join(DOCS, "data");
 const LINKS = join(DATA, "links.jsonl");
 
 const rm = process.argv.includes("--rm");
-const [from, rel, to] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const [fromArg, rel, toArg] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 
 /** The enum, with what each one means — printed before any write, never after. */
 function vocabulary() {
@@ -52,10 +51,11 @@ function vocabulary() {
   }
 }
 
-if (!from || !rel || !to || !/^\d+$/.test(from) || !/^\d+$/.test(to)) {
+if (!fromArg || !rel || !toArg) {
   console.error(`usage: npm run docs:link -- <from> <rel> <to> [--rm]
 
-  <from> <rel> <to>   read as a sentence: "21 relates_to 28"
+  <from> <rel> <to>   read as a sentence: "task-k3f9x2 relates_to design-8mq04p"
+                      either end may be any unambiguous id prefix
   --rm                remove that row instead of writing it
 
 Both ends must already exist. To file a NEW document already linked, use
@@ -75,15 +75,14 @@ if (!(rel in linkRels)) {
 // `docs:new --on` prints a warning and files the document anyway, because there
 // the document is the point and the link is the extra. Here the link IS the
 // whole command, so a missing end is a refusal: there is nothing else to keep.
+// ONE resolution step, and it exits on a miss. `docs:new --on` warns and files
+// the document anyway, because there the document is the point and the link is
+// the extra. Here the link IS the whole command, so a missing end is a refusal:
+// there is nothing else to keep, and `docs:check` would otherwise fail on a
+// dangling row naming links.jsonl rather than whatever typed it.
 const { byId, links, problems } = load();
-const missing = [from, to].filter((id) => !byId.has(id));
-if (missing.length) {
-  console.error(`no such document: ${missing.join(", ")}
-
-Both ends of a link must exist. \`docs:check\` would fail on the dangling row,
-and the failure would name links.jsonl rather than whatever typed it.`);
-  process.exit(1);
-}
+const from = resolveOrExit(fromArg, byId);
+const to = resolveOrExit(toArg, byId);
 if (from === to) {
   console.error(`${from} cannot ${rel} itself.`);
   process.exit(1);

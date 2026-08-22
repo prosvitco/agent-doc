@@ -3,14 +3,14 @@
 **This is a kit, not a project's documentation.** It is an empty copy of a
 normalised documentation model aimed at AI agents as much as at people:
 documents are filed through commands rather than by convention, IDs are
-assigned rather than typed, and every vocabulary is closed and validated. No
+minted rather than typed, and every vocabulary is closed and validated. No
 data travels — a seeded project starts with an empty model and one skill
 document, so `docs:show` answers something on the first run.
 
 This file covers **install and configuration only**, and is deliberately not
 named `README.md` so agents don't re-read it every session. How to *work* with
 the model is documented where agents look: `AGENTS.md.example` (the quick
-reference) and document 1, the skill (the full explanation).
+reference) and `skill-docs-model`, the skill document (the full explanation).
 
 No dependencies, no install step: plain ESM and `node:sqlite`. **Node 22.5 or
 newer** — the derived index will not build on older runtimes.
@@ -33,7 +33,7 @@ commands work from the project root via `--prefix`:
 
 ```bash
 npm --prefix agent-doc run docs:check               # should pass with 1 resource
-npm --prefix agent-doc run docs:show -- --id 1      # the skill explains the rest
+npm --prefix agent-doc run docs:show -- --id skill-docs-model   # the skill explains it
 ```
 
 Seeding into the project root (`docs-seed.mjs .`) also works — `docs:*` is
@@ -67,11 +67,21 @@ a symlink cannot.
 
 | | |
 |---|---|
-| `scripts/` | the ten `docs-*.mjs` commands |
+| `scripts/` | the eleven `docs-*.mjs` commands |
 | `docs/taxonomy.mjs` | every closed vocabulary, with `areas` blanked |
-| `docs/data/`, `docs/reports/` | an empty model plus `skill/1`, the explanation |
 | `AGENTS.md.example` | starting point for the target project's `AGENTS.md` |
-| `seed/docs-model-skill.md` | the source of that skill document — see below |
+| `seed/docs-model-skill.md` | the skill document every seeded project starts with |
+
+**The kit holds no model of its own** — no `docs/data/`, no `docs/reports/`.
+It is a template, so the only document it has anything to say about is the one
+it hands to a new project, and that lives in `seed/` as an asset. Running
+`docs:check` here passes with zero resources, which is the honest answer.
+
+That is also the *only* copy of the skill text. It used to exist twice — once
+in `seed/`, once as this kit's own live document — with nothing detecting when
+the two disagreed, so editing one and shipping the other was a silent failure
+whose symptom appeared months later in someone else's repository. One copy
+cannot drift from itself.
 
 `docs-seed.mjs` writes the starting skill document from
 `seed/docs-model-skill.md`, which sits **outside `docs/`** so that clearing
@@ -85,21 +95,12 @@ than shipping a project with no explanation in it.
 
 ## Maintaining the kit
 
-⚠️ **The skill text lives in two places here** — `seed/docs-model-skill.md`,
-the asset that ships, and `docs/reports/skill/1/index.md`, this kit's own live
-copy of it. Nothing detects when they disagree. Edit the seed asset, then copy
-it across:
-
-```bash
-cp seed/docs-model-skill.md docs/reports/skill/1/index.md
-```
-
-Skip that and the kit keeps handing new projects an older explanation than the
-one you just wrote, and the only symptom appears months later in someone
-else's repository.
+Edit `seed/docs-model-skill.md` to change the explanation new projects start
+with; nothing needs copying anywhere afterwards.
 
 Verify any change by seeding a throwaway directory rather than trusting the
-diff:
+diff — the kit has no model to try a command against, so this is the only way
+to exercise one end to end:
 
 ```bash
 mkdir /tmp/seedcheck && node scripts/docs-seed.mjs /tmp/seedcheck
@@ -111,6 +112,8 @@ bring one up to date, copy `scripts/` over its `scripts/` by hand.
 
 ⚠️ **Do not re-seed a live project with `--force`.** The flag is named for the
 scripts, but the seed writes a fresh empty model too: it truncates
-`docs/data/links.jsonl`, resets `tags.jsonl`, overwrites document `1`, and
-resets `areas` in the taxonomy to the placeholder. On a project with real
+`docs/data/links.jsonl`, resets `tags.jsonl` and `ids.jsonl`, overwrites
+`skill-docs-model`, and resets `areas` in the taxonomy to the placeholder.
+(Nothing to lose in *this* directory, which holds no model — the warning is
+about the projects you seed.) On a project with real
 documentation in it, that is data loss, not an upgrade.

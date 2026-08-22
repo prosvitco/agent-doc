@@ -3,9 +3,9 @@
 // Updates a field on an existing document — the model's Update, which it spent
 // eight commands not having.
 //
-//   npm run docs:set -- 10 --status landed
-//   npm run docs:set -- 10 --status landed --note "why it landed"
-//   npm run docs:set -- 10 --priority high --status in-progress
+//   npm run docs:set -- task-k3f9x2 --status landed
+//   npm run docs:set -- k3f --status landed --note "why it landed"     (prefix)
+//   npm run docs:set -- k3f --priority high --status in-progress
 //
 // WHY THIS IS A COMMAND
 //
@@ -53,10 +53,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { docTypes, priorities } from "../docs/taxonomy.mjs";
-import { DOCS, load } from "./docs-lib.mjs";
+import { DATA, load, resolveId, resolveOrExit } from "./docs-lib.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DATA = join(DOCS, "data");
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -65,10 +64,12 @@ function arg(name) {
   return !v || v.startsWith("--") ? true : v;
 }
 
-const id = process.argv[2];
+const target = process.argv[2];
 
-if (!id || !/^\d+$/.test(id)) {
+if (!target || target.startsWith("--")) {
   console.error(`usage: npm run docs:set -- <id> [--status <s>] [--priority <p>] [--note "<why>"]
+
+  <id>             full or any unambiguous prefix — \`k3f\` for \`task-k3f9x2\`
 
   --status <s>     validated against THIS document's type — each type owns its own enum
   --priority <p>   ${Object.keys(priorities).join(" | ")}
@@ -83,11 +84,16 @@ Only fields. Titles, area tags and links are not fields — see \`docs:new\`.`);
 // and must not be written back; and a document whose CURRENT value is invalid is
 // dropped by the loader before it is indexed — which is precisely the document
 // this command has to be able to repair.
+//
+// Resolution is tried against the loaded model first, then falls back to a bare
+// filename hit. The fallback is the whole point: a document with an unknown
+// `type` never reaches `byId`, so a prefix cannot find it — and that document is
+// exactly the one this command exists to repair. Requiring a full id to fix a
+// broken document is a fair trade for being able to fix it at all.
+const hit = resolveId(target, load().byId);
+const id = hit.id ?? (existsSync(join(DATA, "docs", `${target}.json`)) ? target : resolveOrExit(target, load().byId));
+if (hit.moved) console.error(`  note: ${hit.moved} is now ${id} (docs/data/legacy-ids.jsonl)`);
 const path = join(DATA, "docs", `${id}.json`);
-if (!existsSync(path)) {
-  console.error(`no such document: ${id}`);
-  process.exit(1);
-}
 const original = readFileSync(path, "utf8");
 const doc = JSON.parse(original);
 const spec = docTypes[doc.type];

@@ -30,8 +30,9 @@ const SKILL = join(ROOT, "seed", "docs-model-skill.md");
 const AGENTS_EXAMPLE = join(ROOT, "AGENTS.md.example");
 
 const SCRIPTS = [
-  "docs-lib.mjs", "docs-show.mjs", "docs-new.mjs", "docs-set.mjs", "docs-link.mjs",
-  "docs-check.mjs", "docs-db.mjs", "docs-query.mjs", "docs-rm.mjs", "docs-seed.mjs",
+  "docs-id.mjs", "docs-lib.mjs", "docs-show.mjs", "docs-new.mjs", "docs-set.mjs",
+  "docs-link.mjs", "docs-check.mjs", "docs-db.mjs", "docs-query.mjs", "docs-rm.mjs",
+  "docs-migrate.mjs", "docs-seed.mjs",
 ];
 
 const SCRIPT_ENTRIES = {
@@ -43,6 +44,7 @@ const SCRIPT_ENTRIES = {
   "docs:db": "node scripts/docs-db.mjs",
   "docs:query": "node scripts/docs-query.mjs",
   "docs:rm": "node scripts/docs-rm.mjs",
+  "docs:migrate": "node scripts/docs-migrate.mjs",
   "docs:seed": "node scripts/docs-seed.mjs",
 };
 
@@ -123,21 +125,38 @@ if (start < 0 || end < 2) {
 write("docs/taxonomy.mjs", taxonomy.slice(0, start) + PLACEHOLDER_AREAS + taxonomy.slice(end));
 
 // ---- an empty model, plus the one document that explains it --------------
+//
+// THE ONE HAND-PICKED ID IN THE MODEL: `skill-docs-model`.
+//
+// Everywhere else the id is minted and never typed, for the reasons in
+// `docs-id.mjs`. This document is the exception because it is the ENTRY POINT —
+// AGENTS.md, INSTALL.md and this file's own closing instructions all tell a
+// reader to run `docs:show -- --id skill-docs-model`, and they are written
+// before the database they refer to exists. A minted id would make that line
+// different in every install, which means it could not be written down at all.
+// It is identical in every seeded project, which is the property that matters.
+const SEED_ID = "skill-docs-model";
+const seedAt = new Date().toISOString().slice(0, 10);
+
 mkdirSync(join(destDocs, "data", "docs"), { recursive: true });
 write("docs/data/links.jsonl", "");
-write("docs/data/tags.jsonl", JSON.stringify({ doc: "1", axis: "area", value: "workflow" }) + "\n");
+write("docs/data/tags.jsonl", JSON.stringify({ doc: SEED_ID, axis: "area", value: "workflow" }) + "\n");
+// The ledger starts with the one id in use. An empty ledger plus a live document
+// is a model `docs:check` refuses, exactly as it should: an id nothing recorded
+// is an id `mintId` could hand out twice.
+write("docs/data/ids.jsonl", JSON.stringify({ id: SEED_ID, at: seedAt }) + "\n");
 // The skill text is an ASSET OF THE SEED, not a live document. Read from a live
 // document it would couple the boilerplate to one document id — deleting that
 // document silently breaks seeding for every future project. It lives in seed/,
 // outside docs/ entirely, so clearing the model cannot reach it.
-write("docs/reports/skill/1/index.md", readFileSync(SKILL, "utf8"));
-write("docs/data/docs/1.json", JSON.stringify({
-  id: "1",
+write(`docs/reports/skill/${SEED_ID}/index.md`, readFileSync(SKILL, "utf8"));
+write(`docs/data/docs/${SEED_ID}.json`, JSON.stringify({
+  id: SEED_ID,
   type: "skill",
   title: "Read and file documentation",
   status: "current",
-  at: new Date().toISOString().slice(0, 10),
-  entries: [{ type: "prose", note: "How this model works", file: "reports/skill/1/index.md" }],
+  at: seedAt,
+  entries: [{ type: "prose", note: "How this model works", file: `reports/skill/${SEED_ID}/index.md` }],
 }, null, 2) + "\n");
 
 // ---- package.json scripts, merged rather than replaced -------------------
@@ -171,7 +190,7 @@ NEXT, in order:
 
   1. edit docs/taxonomy.mjs — replace \`areas\` with this project's layers
   2. npm run docs:check          # should pass with 1 resource
-  3. npm run docs:show -- --id 1 # the skill explains the rest
+  3. npm run docs:show -- --id ${SEED_ID}   # the skill explains the rest
   4. copy AGENTS.md.example to the project root as AGENTS.md, then symlink
      every provider file to it:  ln -s AGENTS.md CLAUDE.md
 

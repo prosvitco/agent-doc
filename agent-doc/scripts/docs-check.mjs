@@ -19,7 +19,14 @@ const { byId, links, problems } = load();
 
 const git = (args, input) => {
   try {
-    return execFileSync("git", args, { input, encoding: "utf8", cwd: DOCS });
+    // stderr is IGNORED, and that needs saying because the default is a trap:
+    // `execFileSync` pipes stdout but lets the child's stderr through to the
+    // parent's unless stdio is given explicitly. So every non-git target — the
+    // throwaway directory INSTALL.md tells you to seed as a smoke test — printed
+    // `fatal: not a git repository` above an ok result. The catch below already
+    // treats that as "not this command's problem"; this stops it also being the
+    // reader's problem.
+    return execFileSync("git", args, { input, encoding: "utf8", cwd: DOCS, stdio: ["pipe", "pipe", "ignore"] });
   } catch (e) {
     if (e.status === 1) return ""; // "nothing matched" — the healthy case
     return null; // not a git repo, or git unavailable — not this command's problem
