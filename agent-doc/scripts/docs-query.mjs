@@ -8,7 +8,7 @@ const CANNED = {
              FROM resource r LEFT JOIN tag t ON t.doc=r.id AND t.axis='area'
              LEFT JOIN priority p ON p.name=r.priority
              WHERE r.type='task' AND r.status='open'
-             GROUP BY r.id ORDER BY coalesce(p.rank,99), CAST(r.id AS INTEGER)`,
+             GROUP BY r.id ORDER BY coalesce(p.rank,99), r.at`,
   "--blocked": `SELECT r.id, r.title, group_concat(l."to") AS waiting_on
                 FROM resource r JOIN link l ON l."from"=r.id AND l.rel='blocked_on'
                 GROUP BY r.id`,

@@ -117,7 +117,10 @@ export function build() {
     `INSERT INTO resource (id,type,title,status,priority,summary,at,note_kind,parent_id,source_system,source_url)
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
   );
-  for (const r of byId.values()) {
+  // Filename (id) order is not parent-before-child order — ids are random
+  // suffixes, so a parent can sort after its own child. A resource's parent_id
+  // FK requires the parent row to already exist, so insert in hierarchy order.
+  for (const r of parentsFirst(byId)) {
     // summary is DERIVED from the prose, like the database itself — so
     // `WHERE summary LIKE …` searches what the document says, not its title
     ins.run(r.id, r.type, r.title, r.status, r.priority ?? null, summaryOf(r, byId, links) ?? null,
@@ -142,4 +145,19 @@ export function build() {
 
   db.close();
   return { resources: byId.size, links: links.length, tags: tags.length };
+}
+
+/** Resources in an order where every parent_id precedes the row that names it. */
+function parentsFirst(byId) {
+  const ordered = [];
+  const visited = new Set();
+  const visit = (id) => {
+    if (visited.has(id)) return;
+    visited.add(id);
+    const r = byId.get(id);
+    if (r.parent_id && byId.has(r.parent_id)) visit(r.parent_id);
+    ordered.push(r);
+  };
+  for (const id of byId.keys()) visit(id);
+  return ordered;
 }
